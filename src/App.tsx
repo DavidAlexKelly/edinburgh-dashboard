@@ -1,5 +1,4 @@
-// App.tsx - Simple React site that shows simulation is running
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 
 function App() {
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -143,7 +142,7 @@ function App() {
         <div style={{
           marginTop: '30px',
           fontSize: '0.8rem',
-          opacity: 0.6'
+          opacity: 0.6
         }}>
           Powered by Foundry Compute Module + Vercel
         </div>
