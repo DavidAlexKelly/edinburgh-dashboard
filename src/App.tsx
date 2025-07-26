@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 
 function App() {
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [isLive, setIsLive] = useState(true);
+  const isLive = true; // Simulation is always live for this demo
 
   useEffect(() => {
     const timer = setInterval(() => {
