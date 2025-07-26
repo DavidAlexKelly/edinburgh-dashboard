@@ -8,11 +8,21 @@ let latestSimulationData = {
   system_status: null
 };
 
+// Store connection statistics
+let connectionStats = {
+  total_requests: 0,
+  successful_posts: 0,
+  last_foundry_connection: null,
+  startup_time: new Date().toISOString()
+};
+
 export default function handler(req, res) {
+  connectionStats.total_requests++;
+  
   // Enable CORS for cross-origin requests
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   // Handle preflight requests
   if (req.method === 'OPTIONS') {
@@ -25,13 +35,26 @@ export default function handler(req, res) {
       // Receive data from Foundry compute module
       const data = req.body;
       
-      console.log(`Received ${data.record_type} data from Edinburgh simulation`);
+      // Validate required fields
+      if (!data.record_type || !data.payload) {
+        console.error('Invalid data received - missing record_type or payload');
+        res.status(400).json({ 
+          error: 'Missing required fields: record_type and payload are required' 
+        });
+        return;
+      }
+      
+      console.log(`✅ Received ${data.record_type} data from Edinburgh simulation`);
       
       // Store the latest data by record type
       latestSimulationData[data.record_type] = {
         ...data,
         received_at: new Date().toISOString()
       };
+      
+      // Update connection stats
+      connectionStats.successful_posts++;
+      connectionStats.last_foundry_connection = new Date().toISOString();
       
       res.status(200).json({ 
         success: true, 
@@ -46,10 +69,27 @@ export default function handler(req, res) {
   } 
   else if (req.method === 'GET') {
     try {
+      // Calculate data freshness
+      const now = new Date();
+      const dataTypes = Object.keys(latestSimulationData);
+      const freshData = {};
+      
+      dataTypes.forEach(type => {
+        if (latestSimulationData[type]?.received_at) {
+          const dataTime = new Date(latestSimulationData[type].received_at);
+          const ageMinutes = (now - dataTime) / (1000 * 60);
+          freshData[type] = ageMinutes < 5; // Consider data fresh if less than 5 minutes old
+        } else {
+          freshData[type] = false;
+        }
+      });
+      
       // Serve the latest simulation data to the frontend
       res.status(200).json({
         success: true,
         data: latestSimulationData,
+        connection_stats: connectionStats,
+        data_freshness: freshData,
         last_updated: new Date().toISOString()
       });
       

@@ -15,36 +15,48 @@ interface LatestData {
   system_status?: SimulationData;
 }
 
+interface ConnectionStats {
+  total_requests: number;
+  successful_posts: number;
+  last_foundry_connection: string | null;
+  startup_time: string;
+}
+
+interface ApiResponse {
+  success: boolean;
+  data: LatestData;
+  connection_stats: ConnectionStats;
+  data_freshness: Record<string, boolean>;
+  last_updated: string;
+}
+
 function App() {
-  const [currentTime, setCurrentTime] = useState(new Date());
   const [latestData, setLatestData] = useState<LatestData>({});
-  const [lastUpdate, setLastUpdate] = useState<string>('');
+  const [connectionStats, setConnectionStats] = useState<ConnectionStats | null>(null);
+  const [dataFreshness, setDataFreshness] = useState<Record<string, boolean>>({});
   const [isConnected, setIsConnected] = useState(false);
-
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, []);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   // Fetch simulation data every 5 seconds
   useEffect(() => {
     const fetchData = async () => {
       try {
         const response = await fetch('/api/simulation-data');
-        const result = await response.json();
+        const result: ApiResponse = await response.json();
         
         if (result.success) {
           setLatestData(result.data);
-          setLastUpdate(result.last_updated);
+          setConnectionStats(result.connection_stats);
+          setDataFreshness(result.data_freshness || {});
           setIsConnected(true);
+          setApiError(null);
+        } else {
+          throw new Error('API returned success: false');
         }
       } catch (error) {
         console.error('Error fetching simulation data:', error);
         setIsConnected(false);
+        setApiError(error instanceof Error ? error.message : 'Unknown error');
       }
     };
 
@@ -110,6 +122,17 @@ function App() {
     });
   };
 
+  const getFoundryStatus = () => {
+    if (!connectionStats?.last_foundry_connection) return 'Never connected';
+    const lastConnection = new Date(connectionStats.last_foundry_connection);
+    const now = new Date();
+    const diffMinutes = (now.getTime() - lastConnection.getTime()) / (1000 * 60);
+    
+    if (diffMinutes < 1) return 'Live';
+    if (diffMinutes < 5) return `${Math.floor(diffMinutes)}m ago`;
+    return 'Disconnected';
+  };
+
   const dataStatus = hasRecentData() ? 'Live Data' : isConnected ? 'Connected' : 'Disconnected';
 
   return (
@@ -132,7 +155,7 @@ function App() {
         textAlign: 'center',
         boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
         border: '1px solid rgba(255,255,255,0.2)',
-        maxWidth: '800px',
+        maxWidth: '900px',
         width: '100%'
       }}>
         <h1 style={{
@@ -158,35 +181,41 @@ function App() {
             boxShadow: hasRecentData() ? '0 0 10px #4ade80' : isConnected ? '0 0 10px #fbbf24' : '0 0 10px #ef4444',
             animation: hasRecentData() ? 'pulse 2s infinite' : 'none'
           }}></div>
-          <span style={{ fontSize: '1.2rem' }}>
-            {dataStatus.toUpperCase()}
+          <span style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>
+            {dataStatus}
           </span>
         </div>
 
-        <div style={{
-          background: 'rgba(0,0,0,0.2)',
-          borderRadius: '10px',
-          padding: '20px',
-          marginBottom: '30px'
-        }}>
-          <h3 style={{ marginBottom: '15px' }}>Current Time</h3>
-          <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
-            {currentTime.toLocaleString('en-GB', {
-              weekday: 'long',
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit'
-            })}
+        {/* Connection Statistics */}
+        {connectionStats && (
+          <div style={{
+            background: 'rgba(255,255,255,0.1)',
+            borderRadius: '10px',
+            padding: '15px',
+            marginBottom: '20px',
+            fontSize: '0.9rem'
+          }}>
+            <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>📊 Connection Stats</div>
+            <div>Foundry Status: {getFoundryStatus()}</div>
+            <div>Successful Data Transfers: {connectionStats.successful_posts}</div>
+            <div>Total API Requests: {connectionStats.total_requests}</div>
           </div>
-          {lastUpdate && (
-            <div style={{ fontSize: '0.9rem', opacity: 0.8, marginTop: '10px' }}>
-              Last data: {getDataAge(lastUpdate)}
-            </div>
-          )}
-        </div>
+        )}
+
+        {/* Error Display */}
+        {apiError && (
+          <div style={{
+            background: 'rgba(239, 68, 68, 0.2)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            borderRadius: '10px',
+            padding: '15px',
+            marginBottom: '20px',
+            fontSize: '0.9rem'
+          }}>
+            <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>❌ Connection Error</div>
+            <div>{apiError}</div>
+          </div>
+        )}
 
         <div style={{
           display: 'grid',
@@ -195,12 +224,13 @@ function App() {
           marginBottom: '30px'
         }}>
           <div style={{
-            background: latestData.weather_data ? 'rgba(40, 167, 69, 0.2)' : 'rgba(0,0,0,0.2)',
+            background: latestData.weather_data ? 'rgba(34, 197, 94, 0.2)' : 'rgba(0,0,0,0.2)',
             borderRadius: '10px',
             padding: '15px',
-            border: latestData.weather_data ? '1px solid rgba(40, 167, 69, 0.3)' : 'none'
+            border: latestData.weather_data ? '1px solid rgba(34, 197, 94, 0.3)' : 'none',
+            opacity: dataFreshness.weather_data ? 1 : 0.6
           }}>
-            <div style={{ fontSize: '2rem', marginBottom: '5px' }}>☁️</div>
+            <div style={{ fontSize: '2rem', marginBottom: '5px' }}>🌤️</div>
             <div style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>Weather</div>
             <div style={{ fontSize: '0.7rem', opacity: 0.8, marginTop: '5px', lineHeight: '1.3' }}>
               {formatPayload(latestData.weather_data?.payload, 'weather_data')}
@@ -208,6 +238,7 @@ function App() {
             {latestData.weather_data && (
               <div style={{ fontSize: '0.6rem', opacity: 0.6, marginTop: '5px' }}>
                 {getDataAge(latestData.weather_data.received_at || '')}
+                {!dataFreshness.weather_data && ' (stale)'}
               </div>
             )}
           </div>
@@ -216,7 +247,8 @@ function App() {
             background: latestData.traffic_zones ? 'rgba(0, 123, 255, 0.2)' : 'rgba(0,0,0,0.2)',
             borderRadius: '10px',
             padding: '15px',
-            border: latestData.traffic_zones ? '1px solid rgba(0, 123, 255, 0.3)' : 'none'
+            border: latestData.traffic_zones ? '1px solid rgba(0, 123, 255, 0.3)' : 'none',
+            opacity: dataFreshness.traffic_zones ? 1 : 0.6
           }}>
             <div style={{ fontSize: '2rem', marginBottom: '5px' }}>🚗</div>
             <div style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>Traffic</div>
@@ -226,6 +258,7 @@ function App() {
             {latestData.traffic_zones && (
               <div style={{ fontSize: '0.6rem', opacity: 0.6, marginTop: '5px' }}>
                 {getDataAge(latestData.traffic_zones.received_at || '')}
+                {!dataFreshness.traffic_zones && ' (stale)'}
               </div>
             )}
           </div>
@@ -234,7 +267,8 @@ function App() {
             background: latestData.events_data ? 'rgba(255, 193, 7, 0.2)' : 'rgba(0,0,0,0.2)',
             borderRadius: '10px',
             padding: '15px',
-            border: latestData.events_data ? '1px solid rgba(255, 193, 7, 0.3)' : 'none'
+            border: latestData.events_data ? '1px solid rgba(255, 193, 7, 0.3)' : 'none',
+            opacity: dataFreshness.events_data ? 1 : 0.6
           }}>
             <div style={{ fontSize: '2rem', marginBottom: '5px' }}>🎭</div>
             <div style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>Events</div>
@@ -244,6 +278,7 @@ function App() {
             {latestData.events_data && (
               <div style={{ fontSize: '0.6rem', opacity: 0.6, marginTop: '5px' }}>
                 {getDataAge(latestData.events_data.received_at || '')}
+                {!dataFreshness.events_data && ' (stale)'}
               </div>
             )}
           </div>
@@ -252,7 +287,8 @@ function App() {
             background: latestData.system_status ? 'rgba(108, 117, 125, 0.2)' : 'rgba(0,0,0,0.2)',
             borderRadius: '10px',
             padding: '15px',
-            border: latestData.system_status ? '1px solid rgba(108, 117, 125, 0.3)' : 'none'
+            border: latestData.system_status ? '1px solid rgba(108, 117, 125, 0.3)' : 'none',
+            opacity: dataFreshness.system_status ? 1 : 0.6
           }}>
             <div style={{ fontSize: '2rem', marginBottom: '5px' }}>📊</div>
             <div style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>System</div>
@@ -262,6 +298,7 @@ function App() {
             {latestData.system_status && (
               <div style={{ fontSize: '0.6rem', opacity: 0.6, marginTop: '5px' }}>
                 {getDataAge(latestData.system_status.received_at || '')}
+                {!dataFreshness.system_status && ' (stale)'}
               </div>
             )}
           </div>
